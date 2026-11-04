@@ -10,7 +10,7 @@ A browser memory card game. Flip two cards at a time and find every pair in as f
 
 ## Run it
 
-Open `index.html` in your browser, or use the Live Server extension in VS Code.
+Open https://ericacirerica.github.io/Memory-Game/ in your browser, or use the Live Server extension in VS Code.
 
 ## Files
 

@@ -23,6 +23,57 @@ const bestEl = document.getElementById("best");
 const winDialog = document.getElementById("win");
 const winText = document.getElementById("winText");
 
+// 3b. Sounds. These are made with the browser's Web Audio API, so there are no audio files to add.
+let audioCtx = null;
+let soundOn = true;
+try { soundOn = localStorage.getItem("memory-sound") !== "off"; } catch (e) {}
+
+// Browsers only allow audio after a click or tap, so we create it lazily.
+function getCtx() {
+  if (!audioCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    audioCtx = new AC();
+  }
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  return audioCtx;
+}
+
+// Plays one note: pitch (Hz), delay and length (seconds), wave shape, volume,
+// and an optional pitch to slide to.
+function tone(freq, delay, dur, type, vol, slideTo) {
+  if (!soundOn) return;
+  const ctx = getCtx();
+  if (!ctx) return;
+  const t = ctx.currentTime + delay;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+  // Quick fade in and out stops the clicking sound at note edges.
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+}
+
+const sounds = {
+  flip()  { tone(520, 0, 0.09, "triangle", 0.2, 720); },
+  match() { tone(660, 0.1, 0.15, "sine", 0.25); tone(880, 0.22, 0.25, "sine", 0.25); },
+  wrong() { tone(240, 0.1, 0.3, "sawtooth", 0.12, 120); },
+  win() {
+    [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.15, 0.3, "triangle", 0.25));
+    tone(1319, 0.6, 0.6, "triangle", 0.25);
+  },
+  highScore() {
+    [1047, 1319, 1568, 2093].forEach((f, i) => tone(f, 1.3 + i * 0.1, 0.2, "sine", 0.18));
+  }
+};
+
 // 4. Helpers.
 // Fisher-Yates shuffle: gives every ordering an equal chance (unlike sort(random)).
 function shuffle(arr) {
@@ -100,6 +151,7 @@ function handleCard(card) {
   if (locked || card.classList.contains("flipped") || card.classList.contains("matched")) return;
 
   if (timerId === null) startTimer(); // clock starts on your first flip
+  sounds.flip();
 
   card.classList.add("flipped");
   card.setAttribute("aria-label", "Card " + card.dataset.symbol);
@@ -123,9 +175,11 @@ function handleCard(card) {
     firstCard = null;
     matches++;
     if (matches === LEVELS[level].pairs) win();
+    else sounds.match();
   } else {
     // No match: show both briefly, then flip them back.
     locked = true;
+    sounds.wrong();
     const a = firstCard;
     const b = card;
     setTimeout(() => {
@@ -142,12 +196,14 @@ function handleCard(card) {
 // 7. Winning.
 function win() {
   stopTimer();
+  sounds.win();
   const best = getBest();
   let msg = "Done in " + moves + " moves and " + formatTime(seconds) + ".";
   if (best === null || moves < best) {
     saveBest(moves);
     showBest();
     msg += " That's a new best!";
+    sounds.highScore();
   }
   winText.textContent = msg;
   // Short pause so the last pair is seen flipping before the dialog appears.
@@ -169,6 +225,20 @@ document.querySelectorAll("[data-level]").forEach((btn) => {
     newGame();
   });
 });
+
+// Sound on/off button. The choice is remembered in the browser.
+const muteBtn = document.getElementById("mute");
+function showSound() {
+  muteBtn.textContent = soundOn ? "🔊 Sound on" : "🔇 Sound off";
+  muteBtn.setAttribute("aria-pressed", String(!soundOn));
+}
+muteBtn.addEventListener("click", () => {
+  soundOn = !soundOn;
+  try { localStorage.setItem("memory-sound", soundOn ? "on" : "off"); } catch (e) {}
+  showSound();
+  if (soundOn) sounds.flip(); // a little preview blip
+});
+showSound();
 
 document.getElementById("restart").addEventListener("click", newGame);
 document.getElementById("again").addEventListener("click", () => {
